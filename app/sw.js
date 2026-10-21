@@ -5,7 +5,7 @@
  * Page loads try the network first so updates arrive; everything else is served from the cache
  * and refreshed in the background. Add new app files to SHELL (tests/sw.test.js checks the list).
  */
-const CACHE = 'paperleaf-shell-v1';
+const CACHE = 'paperleaf-shell-v2';
 
 const SHELL = [
   './',
@@ -29,6 +29,7 @@ const SHELL = [
   'js/backup.js',
   'js/book.js',
   'js/dates.js',
+  'js/dictation.js',
   'js/editor.js',
   'js/ink.js',
   'js/main.js',

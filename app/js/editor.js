@@ -1,6 +1,7 @@
 import { LINES } from './book.js';
 import { parseDate, validDate } from './dates.js';
 import { NIBS, PAGE_W, PAGE_H, strokeD, addPoint, eraseAt } from './ink.js';
+import { createDictation, joinText } from './dictation.js';
 import { blankPage } from './model.js';
 import { preparePhoto, forgetPhoto, hydratePhotos } from './photos.js';
 import { paperHTML, headHTML, photoHTML, strokeHTML } from './render.js';
@@ -19,12 +20,13 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
     page: null, isNew: true, mode: 'write', undo: [],
     photoBlob: null, photoURL: null, photoSize: null, oldPhoto: null,
     penSeen: false, cur: null, erasing: false, tool: 'pen', ink: 0, nib: 'fine',
-    dirty: false, rec: null, listening: false, saving: false, confirmClose: null,
+    dirty: false, saving: false, confirmClose: null,
   };
   const hasPhoto = () => !!(ED.photoBlob || ED.page.photo);
 
   /* ---------- open / close ---------- */
   function open(page, mode = 'write') {
+    dictation.cancel();
     const style = getStyle();
     ED.isNew = !page;
     ED.page = page ? structuredClone(page) : blankPage(style);
@@ -52,7 +54,7 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
   }
 
   function close() {
-    stopDictation();
+    dictation.cancel();
     if (ED.photoURL) URL.revokeObjectURL(ED.photoURL);
     ED.photoURL = null; ED.photoBlob = null;
     editor.hidden = true;
@@ -94,7 +96,7 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
     $$('.ed-modes [role="tab"]').forEach(b => b.setAttribute('aria-selected', String(b.dataset.mode === m)));
     $$('.ed-tools .panel').forEach(p => { p.hidden = p.dataset.panel !== m; });
     edPage.classList.toggle('drawing', m === 'draw');
-    if (m !== 'speak') stopDictation();
+    if (m !== 'speak' && dictation.listening) dictation.stop();
     updateHints();
   }
   $$('.ed-modes [role="tab"]').forEach(b => b.addEventListener('click', () => setMode(b.dataset.mode)));
@@ -226,65 +228,42 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
   edInk.addEventListener('pointercancel', endStroke);
 
   /* ---------- dictation ---------- */
-  function setListening(on) {
-    ED.listening = on;
-    $('btnMic').classList.toggle('listening', on);
-    $('micLabel').textContent = on ? 'Stop dictating' : 'Start dictating';
-    if (!on) $('micLive').textContent = '';
-  }
-  function stopDictation() {
-    const rec = ED.rec;
-    ED.rec = null;
-    if (rec) { try { rec.stop(); } catch { /* already stopped */ } }
-    setListening(false);
-  }
-  function showMicFallback() {
-    stopDictation();
-    $('micFallback').hidden = false;
-    $('btnMic').disabled = true;
-    edText.focus();
-    edText.setSelectionRange(edText.value.length, edText.value.length);
-  }
-  function appendDictation(t) {
-    t = t.trim();
-    if (!t) return;
-    const v = edText.value;
-    if (!v.trim() || /[.!?]\s*$/.test(v) || /\n\s*$/.test(v)) t = t[0].toUpperCase() + t.slice(1);
-    edText.value = v + (v && !/\s$/.test(v) ? ' ' : '') + t;
-    edText.scrollTop = edText.scrollHeight;
-    ED.dirty = true;
-    updateMeter();
-  }
-  $('btnMic').addEventListener('click', () => {
-    if (ED.listening) { stopDictation(); return; }
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) { showMicFallback(); return; }
-    let rec;
-    try {
-      rec = new SR();
-      rec.lang = navigator.language || 'en-US';
-      rec.continuous = true;
-      rec.interimResults = true;
-    } catch { showMicFallback(); return; }
-    rec.onresult = e => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        const r = e.results[i];
-        if (r.isFinal) appendDictation(r[0].transcript); else interim += r[0].transcript;
-      }
+  const MIC_FAILURES = {
+    unsupported: 'This browser can’t take dictation. Chrome, Edge and Safari can.',
+    blocked: 'The microphone is blocked for this site. Allow it from the icon next to the address bar, then try again.',
+    'no-mic': 'No microphone was found.',
+    service: 'This browser’s speech service isn’t available. Some browsers, like Brave and Firefox, turn it off.',
+  };
+  let dictationBase = '';
+  const dictation = createDictation({
+    onUpdate(text, interim) {
+      edText.value = joinText(dictationBase, text);
+      edText.scrollTop = edText.scrollHeight;
       $('micLive').textContent = interim;
-    };
-    rec.onerror = e => {
-      if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(e.error)) showMicFallback();
-      else if (e.error === 'network') { stopDictation(); toast('Dictation needs an internet connection in this browser. Keyboard dictation works offline.'); }
-    };
-    // Some browsers stop listening after a pause; keep going until the button is pressed again.
-    rec.onend = () => {
-      if (ED.rec !== rec) return;
-      try { rec.start(); } catch { ED.rec = null; setListening(false); }
-    };
-    ED.rec = rec;
-    try { rec.start(); setListening(true); } catch { showMicFallback(); }
+      if (text) ED.dirty = true;
+      updateMeter();
+    },
+    onFail(reason) {
+      $('micReason').textContent = MIC_FAILURES[reason] || MIC_FAILURES.service;
+      $('micFallback').hidden = false;
+      if (reason !== 'blocked') {
+        edText.focus();
+        edText.setSelectionRange(edText.value.length, edText.value.length);
+      }
+    },
+    onListening(on) {
+      $('btnMic').classList.toggle('listening', on);
+      $('micLabel').textContent = on ? 'Stop dictating' : 'Start dictating';
+      // Typing while listening would be overwritten by the next words heard.
+      edText.readOnly = on;
+      if (!on) $('micLive').textContent = '';
+    },
+  });
+  $('btnMic').addEventListener('click', () => {
+    if (dictation.listening) { dictation.stop(); return; }
+    $('micFallback').hidden = true;
+    dictationBase = edText.value;
+    dictation.start();
   });
 
   /* ---------- photos ---------- */
