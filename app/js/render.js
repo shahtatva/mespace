@@ -39,10 +39,23 @@ export function photoHTML({ id, src }, aspect) {
 
 const handClass = hand => (hand === 'script' ? 'hand-script' : 'hand-print');
 
+const READ_LABELS = {
+  queued: 'Waiting to be read',
+  reading: 'Reading the handwriting…',
+  failed: 'Couldn’t be read',
+};
+
+/** The small printed line under a photo: which notebook it came from, and whether its text needs attention. */
+function photoFoot(page) {
+  const flag = READ_LABELS[page.transcriptStatus] || (page.needsCheck && !page.transcriptChecked ? 'Check the text' : '');
+  const parts = [page.notebook && esc(page.notebook), flag && `<span class="flag">${flag}</span>`].filter(Boolean);
+  return parts.length ? `<div class="pg-foot">${parts.join(' · ')}</div>` : '';
+}
+
 function entryHTML(page, no) {
   const hand = handClass(page.hand);
   const body = page.photo
-    ? `<div class="pg-photo">${photoHTML({ id: page.photo }, page.photoAspect)}</div>`
+    ? `<div class="pg-photo">${photoHTML({ id: page.photo }, page.photoAspect)}</div>` + photoFoot(page)
     : `<div class="pg-text ${hand}">${esc(page.text)}</div>`;
   return paperHTML(page.paper) + headHTML(parseDate(page.date))
     + `<div class="pg-title ${hand}">${esc(page.title)}</div>` + body + inkHTML(page.ink)
@@ -69,7 +82,7 @@ const GUIDE = [
   '<span class="lead">→ Write:</span> type on the lines and it lands in handwriting.',
   '<span class="lead">→ Draw:</span> pick up the pen and sketch anywhere on the page.',
   '<span class="lead">→ Speak:</span> talk, and your words fill the lines.',
-  '<span class="lead">→ Photo:</span> tape in a picture of a paper page.',
+  '<span class="lead">→ Scan:</span> photograph paper pages, and Claude reads the handwriting so search finds it.',
   '',
   'Pages stay on this device. Make a backup from the menu now and then.',
   '',
@@ -88,7 +101,7 @@ function newHTML(no, ctx) {
   return paperHTML('lined', true) + `<div class="pp faint">${headHTML(new Date())}</div>`
     + `<div class="new-cta"><p>${ctx.entries.length ? 'A fresh page' : 'Your first page'}</p>`
     + '<button class="btn primary" data-act="write">Write today’s page</button>'
-    + '<button class="btn ghost" data-act="photo">Import a paper page</button></div>'
+    + '<button class="btn ghost" data-act="scan">Scan paper pages</button></div>'
     + `<div class="pg-num">${no}</div>`;
 }
 

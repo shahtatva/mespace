@@ -2,12 +2,17 @@ import { todayISO, validDate } from './dates.js';
 
 export const PAPERS = ['lined', 'dot', 'plain'];
 export const HANDS = ['print', 'script'];
+export const READ_STATES = ['', 'queued', 'reading', 'done', 'failed'];
+// Who decided a page's date: me, the date written on the page, or a guess from the page before it.
+export const DATE_SOURCES = ['user', 'page', 'guess'];
 export const TRASH_DAYS = 30;
 
 export function blankPage({ date, paper = 'lined', hand = 'print' } = {}) {
   return {
     id: null, date: validDate(date) || todayISO(), title: '', text: '', paper, hand,
     ink: [], photo: null, photoAspect: null, transcript: '', notebook: '',
+    transcriptAI: '', transcriptStatus: '', transcriptError: '', transcriptChecked: false, needsCheck: false,
+    importId: '', importSeq: 0, dateSet: 'user',
     createdAt: 0, updatedAt: 0, deletedAt: null,
   };
 }
@@ -39,6 +44,14 @@ export function normalizePage(raw) {
     photoAspect: num(raw.photoAspect) > 0 ? num(raw.photoAspect) : null,
     transcript: str(raw.transcript, 200000),
     notebook: str(raw.notebook, 120),
+    transcriptAI: str(raw.transcriptAI, 200000),
+    transcriptStatus: READ_STATES.includes(raw.transcriptStatus) ? raw.transcriptStatus : '',
+    transcriptError: str(raw.transcriptError, 40),
+    transcriptChecked: raw.transcriptChecked === true,
+    needsCheck: raw.needsCheck === true,
+    importId: str(raw.importId, 80),
+    importSeq: num(raw.importSeq),
+    dateSet: DATE_SOURCES.includes(raw.dateSet) ? raw.dateSet : 'user',
     createdAt: num(raw.createdAt),
     updatedAt: num(raw.updatedAt),
     deletedAt: num(raw.deletedAt) || null,

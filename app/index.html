@@ -40,10 +40,12 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
       </button>
       <div class="menu" id="menu" hidden>
+        <button id="mScan">Scan a notebook…</button>
         <button id="mBackup">Back up now</button>
         <button id="mRestore">Restore from a backup…</button>
         <button id="mTrash">Trash <span class="menu-count" id="mTrashCount"></span></button>
         <button id="mInstall" hidden>Install app</button>
+        <button id="mSettings">Settings</button>
       </div>
       <input type="file" id="restoreFile" accept="application/json,.json" hidden>
     </div>
@@ -62,7 +64,7 @@
   <footer class="foot">
     <div class="status" id="status" data-s="loading">
       <i></i><span id="statusText">Opening your notebook</span>
-      <button class="link-btn" id="statusBackup" hidden>Back up</button>
+      <button class="link-btn" id="statusAction" hidden></button>
     </div>
     <div class="pager">
       <button class="btn icon-btn" id="prev" aria-label="Previous pages"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
@@ -159,11 +161,102 @@
         </div>
         <p class="hint" id="photoHint">Photograph a page from your paper journal. It gets taped onto this page, so paper and digital entries live in the same notebook.</p>
         <div class="grp" id="photoTools" hidden>
-          <label class="fld"><span>What the page says (optional; makes it searchable)</span><textarea id="edTranscript" placeholder="Type the words on the page, or the parts you'd want to find later."></textarea></label>
-          <div class="row"><button class="btn ghost danger" id="btnRemovePhoto">Remove photo</button></div>
+          <div class="row">
+            <button class="btn" id="btnRotate"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/></svg>Rotate</button>
+            <button class="btn" id="btnCrop"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14M2 6h14a2 2 0 0 1 2 2v14"/></svg>Crop</button>
+            <button class="btn ghost danger" id="btnRemovePhoto">Remove photo</button>
+          </div>
+          <div class="read-box">
+            <h3>Words on the page</h3>
+            <button class="btn primary" id="btnRead">Read the handwriting</button>
+            <p class="hint" id="readHint"></p>
+            <label class="fld"><span>What the page says (used for search)</span><textarea id="edTranscript" placeholder="Claude can fill this in, or type the words yourself."></textarea></label>
+            <label class="check"><input type="checkbox" id="edChecked"><span>I’ve checked this text against the page</span></label>
+          </div>
         </div>
       </div>
     </aside>
+  </div>
+</section>
+
+<section class="scanner" id="scanner" hidden aria-labelledby="scTitle">
+  <div class="sc-bar">
+    <button class="btn ghost" id="scClose"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span id="scCloseLabel">Close</span></button>
+    <h2 id="scTitle">Scan a notebook</h2>
+    <button class="btn primary" id="scDone" disabled>Add pages</button>
+  </div>
+  <div class="sc-setup" id="scSetup">
+    <div class="sc-card">
+      <p class="hint">Photograph pages from a paper notebook one after another. They’re added to your book as photo pages, in the order you take them.</p>
+      <label class="fld"><span>Notebook name (optional)</span><input id="scName" maxlength="120" placeholder="Blue notebook, 2023" autocomplete="off"></label>
+      <label class="fld"><span>Date of the first page, if you know it</span><input type="date" id="scDate"></label>
+      <label class="check"><input type="checkbox" id="scRead"><span>Have Claude read the handwriting</span></label>
+      <p class="hint" id="scReadHint"></p>
+      <button class="link-btn" id="scOpenSettings" hidden>Open Settings</button>
+      <div class="row">
+        <button class="btn primary" id="scCamera"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>Start the camera</button>
+        <label class="btn file">Choose photos<input type="file" accept="image/*" multiple id="scFiles"></label>
+      </div>
+    </div>
+  </div>
+  <div class="sc-cam" id="scCam" hidden>
+    <video id="scVideo" playsinline muted autoplay></video>
+    <div class="sc-guide" aria-hidden="true"></div>
+    <div class="sc-flash" id="scFlash" aria-hidden="true"></div>
+    <div class="sc-controls">
+      <label class="btn file sc-pick">Photos<input type="file" accept="image/*" multiple id="scFiles2"></label>
+      <button class="sc-shutter" id="scShutter" aria-label="Take a photo of this page"></button>
+      <span class="sc-count" id="scCount" aria-live="polite">No pages yet</span>
+    </div>
+  </div>
+  <ol class="sc-tray" id="scTray" hidden></ol>
+</section>
+
+<section class="sheet" id="settingsSheet" hidden aria-labelledby="setTitle">
+  <div class="sheet-card">
+    <header class="sheet-head"><h2 id="setTitle">Settings</h2><button class="btn ghost sheet-close">Done</button></header>
+    <section class="set-sec">
+      <h3>Reading handwriting</h3>
+      <p class="hint">Paperleaf uses Claude Opus 5.5 to read photographed pages. It needs an Anthropic API key, which you can create at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. The key is stored only on this device, and a photo is sent to Anthropic only when it’s being read.</p>
+      <label class="fld"><span id="setKeyLabel">Anthropic API key</span><input type="password" id="setKey" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+      <div class="row">
+        <button class="btn primary" id="setSave">Save key</button>
+        <button class="btn ghost" id="setShow">Show</button>
+        <button class="btn ghost danger" id="setRemove" hidden>Remove key</button>
+      </div>
+      <p class="hint" id="setKeyHint" aria-live="polite"></p>
+      <p class="set-stat" id="setUsage"></p>
+      <div class="set-waiting" id="setWaiting" hidden><span id="setWaitingText"></span><button class="link-btn" id="setReadNow">Read them now</button></div>
+    </section>
+    <section class="set-sec">
+      <h3>Accuracy</h3>
+      <p class="set-stat" id="setAccuracy"></p>
+      <p class="hint">After fixing a page’s text, tick “I’ve checked this text against the page”. Each checked page adds to this measure.</p>
+    </section>
+    <section class="set-sec">
+      <h3>Pages to check</h3>
+      <ul class="trash-list check-list" id="setCheckList"></ul>
+    </section>
+  </div>
+</section>
+
+<section class="sheet crop-sheet" id="cropSheet" hidden aria-labelledby="cropTitle">
+  <div class="sheet-card">
+    <header class="sheet-head"><h2 id="cropTitle">Crop the photo</h2></header>
+    <div class="crop-stage">
+      <div class="crop-frame" id="cropFrame">
+        <img id="cropImg" alt="Photo being cropped">
+        <div class="crop-box" id="cropBox" data-h="move">
+          <span data-h="nw"></span><span data-h="ne"></span><span data-h="sw"></span><span data-h="se"></span>
+        </div>
+      </div>
+    </div>
+    <div class="row crop-actions">
+      <button class="btn" id="cropRotate">Rotate</button>
+      <span class="grow"></span>
+      <button class="btn ghost" id="cropCancel">Cancel</button>
+      <button class="btn primary" id="cropApply">Use this</button>
+    </div>
   </div>
 </section>
 

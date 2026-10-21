@@ -1,11 +1,15 @@
 import { makeBackup, parseBackup, mergePages, backupFilename } from './backup.js';
 import { shortDate, daysAgo } from './dates.js';
 import { labelOf, sortPages } from './book.js';
+import { READ_ERRORS } from './claude.js';
 import { createEditor } from './editor.js';
 import { normalizePage, expiredTrash, daysLeftInTrash, PAPERS, HANDS } from './model.js';
 import { createNotebook } from './notebook.js';
 import { forgetPhoto } from './photos.js';
+import { createScanner } from './scanner.js';
+import { createSettings } from './settings.js';
 import { openStore, requestPersistence } from './store.js';
+import { createTranscriber } from './transcriber.js';
 import { $, esc, coarsePointer } from './util.js';
 
 const BACKUP_DUE_DAYS = 14;
@@ -13,6 +17,7 @@ const BACKUP_DUE_DAYS = 14;
 const store = await openStore();
 let pages = [];
 let style = { paper: 'lined', hand: 'print' };
+const getKey = () => store.getMeta('claudeKey').catch(() => null);
 
 /* ---------- toast ---------- */
 let toastTimer;
@@ -29,28 +34,31 @@ function toast(message, action) {
   toastTimer = setTimeout(() => t.classList.remove('show'), action ? 6000 : 3200);
 }
 
-/* ---------- sheets (Trash, install help) ---------- */
+/* ---------- sheets (Trash, Settings, install help) ---------- */
+const SHEETS = ['trashSheet', 'settingsSheet', 'installSheet'];
 const openSheet = id => { $(id).hidden = false; $(id).querySelector('.sheet-close')?.focus(); };
 const closeSheet = id => { $(id).hidden = true; };
-const anySheetOpen = () => !$('trashSheet').hidden || !$('installSheet').hidden;
+const anySheetOpen = () => SHEETS.some(id => !$(id).hidden) || !$('cropSheet').hidden;
 for (const btn of document.querySelectorAll('.sheet-close')) btn.addEventListener('click', () => closeSheet(btn.closest('.sheet').id));
 document.addEventListener('keydown', ev => {
   if (ev.key !== 'Escape') return;
   if (!$('menu').hidden) closeMenu();
-  for (const id of ['trashSheet', 'installSheet']) if (!$(id).hidden) closeSheet(id);
+  for (const id of SHEETS) if (!$(id).hidden) closeSheet(id);
 });
 
 /* ---------- book + editor ---------- */
 const notebook = createNotebook({
   store,
   onOpenPage: page => editor.open(page, page.photo ? 'photo' : 'write'),
-  onNew: mode => editor.open(null, mode),
-  isBlocked: () => editor.isOpen() || anySheetOpen() || !$('menu').hidden,
+  onNew: mode => (mode === 'scan' ? scanner.open() : editor.open(null, mode)),
+  isBlocked: () => editor.isOpen() || scanner.isOpen() || anySheetOpen() || !$('menu').hidden,
 });
 
 const editor = createEditor({
   store,
   toast,
+  getKey,
+  openSettings: () => settings.open(),
   getStyle: () => style,
   setStyle: s => { style = s; store.setMeta('style', s).catch(() => {}); },
   pageNumberOf: id => notebook.pageNumberOf(id),
@@ -60,6 +68,8 @@ const editor = createEditor({
   },
   onTrashed: async page => {
     await reload();
+// Carry on reading any pages left waiting last time.
+transcriber.run();
     toast('Moved to Trash', { label: 'Undo', run: () => restorePage(page.id) });
   },
 });
@@ -69,29 +79,93 @@ async function reload(focusId = null) {
   notebook.setPages(pages, { focusId });
   updateStatus();
   if (!$('trashSheet').hidden) renderTrash();
+  settings.refresh();
 }
 
+/* ---------- reading handwriting in the background ---------- */
+let readState = null;
+let reloadTimer;
+const transcriber = createTranscriber({
+  store,
+  getKey,
+  onProgress: state => {
+    if (state && state.state === 'done' && state.done) toast(`Finished reading ${state.done} page${state.done === 1 ? '' : 's'}`);
+    readState = state && state.state !== 'done' && !(state.state === 'stopped' && !state.left) ? state : null;
+    updateStatus();
+  },
+  onPageChanged: page => {
+    editor.refreshIfOpen(page);
+    clearTimeout(reloadTimer);
+    reloadTimer = setTimeout(() => reload(), 250);
+  },
+});
+
+const settings = createSettings({
+  store,
+  getPages: () => pages,
+  transcriber,
+  onOpenPage: page => editor.open(page, 'photo'),
+});
+
+const scanner = createScanner({
+  store,
+  getKey,
+  toast,
+  openSettings: () => settings.open(),
+  onAdded: async (ids, { name, read }) => {
+    await reload(ids[0]);
+    requestPersistence();
+    toast(`Added ${ids.length} page${ids.length === 1 ? '' : 's'}${name ? ` from ${name}` : ''}.${read ? ' Claude is reading them now.' : ''}`);
+    if (read) transcriber.run();
+  },
+});
+
 $('btnNew').addEventListener('click', () => editor.open(null, 'write'));
+$('mScan').addEventListener('click', () => scanner.open());
+$('mSettings').addEventListener('click', () => settings.open());
 
 /* ---------- status line ---------- */
+let statusAction = null;
+function setStatus(kind, text, action) {
+  $('status').dataset.s = kind;
+  $('statusText').textContent = text;
+  $('statusAction').hidden = !action;
+  if (action) $('statusAction').textContent = action.label;
+  statusAction = action ? action.run : null;
+}
+$('statusAction').addEventListener('click', () => { if (statusAction) statusAction(); });
+
+function readingStatus() {
+  if (readState.state === 'reading') {
+    return setStatus('busy', `Reading handwriting · ${readState.done + 1} of ${readState.total}`, { label: 'Stop', run: () => transcriber.stop() });
+  }
+  const n = `${readState.left} page${readState.left === 1 ? '' : 's'}`;
+  switch (readState.reason) {
+    case 'no-key': return setStatus('warn', `${n} waiting to be read`, { label: 'Set up', run: () => settings.open() });
+    case 'offline': return setStatus('warn', `${n} waiting · reading resumes when you’re online`);
+    case 'busy': return setStatus('warn', 'Claude is busy · trying again in a minute');
+    case 'cancelled': return setStatus('warn', `${n} waiting to be read`, { label: 'Read now', run: () => transcriber.run() });
+    default: return setStatus('warn', READ_ERRORS[readState.reason] || READ_ERRORS.failed, { label: 'Settings', run: () => settings.open() });
+  }
+}
+
 async function updateStatus() {
-  const st = $('status'), text = $('statusText'), btn = $('statusBackup');
-  btn.hidden = true;
   if (store.kind === 'memory') {
-    st.dataset.s = 'warn';
-    text.textContent = 'This browser isn’t letting the app save. Pages last until you close it.';
+    setStatus('warn', 'This browser isn’t letting the app save. Pages last until you close it.');
     return;
   }
+  if (readState) { readingStatus(); return; }
   const last = await store.getMeta('lastBackupAt').catch(() => null);
+  if (readState) { readingStatus(); return; }
   const live = pages.filter(p => !p.deletedAt).length;
   const due = live > 0 && (!last || Date.now() - last > BACKUP_DUE_DAYS * 864e5);
-  st.dataset.s = due ? 'warn' : 'ok';
   const detail = live === 0 ? '' : last ? `backed up ${daysAgo(last)}` : 'not backed up yet';
   // Phones show only the backup state; there's no room for both.
-  text.textContent = !detail ? 'Saved on this device'
-    : innerWidth < 760 ? detail[0].toUpperCase() + detail.slice(1)
-    : `Saved on this device · ${detail}`;
-  btn.hidden = !due;
+  setStatus(due ? 'warn' : 'ok',
+    !detail ? 'Saved on this device'
+      : innerWidth < 760 ? detail[0].toUpperCase() + detail.slice(1)
+      : `Saved on this device · ${detail}`,
+    due ? { label: 'Back up', run: backupNow } : null);
 }
 let statusTimer;
 addEventListener('resize', () => { clearTimeout(statusTimer); statusTimer = setTimeout(updateStatus, 150); });
@@ -146,7 +220,6 @@ async function backupNow() {
   }
 }
 $('mBackup').addEventListener('click', backupNow);
-$('statusBackup').addEventListener('click', backupNow);
 
 $('mRestore').addEventListener('click', () => $('restoreFile').click());
 $('restoreFile').addEventListener('change', async ev => {
@@ -195,6 +268,8 @@ async function deleteForever(id) {
   await store.removePage(id);
   if (p.photo) await editor.removeUnusedPhoto(p.photo);
   await reload();
+// Carry on reading any pages left waiting last time.
+transcriber.run();
 }
 
 function renderTrash() {
@@ -257,3 +332,5 @@ try {
   /* start with whatever loads below */
 }
 await reload();
+// Carry on reading any pages left waiting last time.
+transcriber.run();

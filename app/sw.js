@@ -5,7 +5,7 @@
  * Page loads try the network first so updates arrive; everything else is served from the cache
  * and refreshed in the background. Add new app files to SHELL (tests/sw.test.js checks the list).
  */
-const CACHE = 'paperleaf-shell-v2';
+const CACHE = 'paperleaf-shell-v3';
 
 const SHELL = [
   './',
@@ -26,21 +26,29 @@ const SHELL = [
   'icons/icon-512.png',
   'icons/icon-maskable-512.png',
   'icons/apple-touch-icon.png',
+  'js/accuracy.js',
   'js/backup.js',
   'js/book.js',
+  'js/claude.js',
   'js/dates.js',
   'js/dictation.js',
   'js/editor.js',
+  'js/imageedit.js',
   'js/ink.js',
   'js/main.js',
   'js/model.js',
   'js/notebook.js',
   'js/photos.js',
   'js/render.js',
+  'js/scanner.js',
   'js/search.js',
+  'js/settings.js',
   'js/store.js',
   'js/textfit.js',
+  'js/transcriber.js',
+  'js/transcription.js',
   'js/util.js',
+  'vendor/anthropic-sdk.js',
 ];
 
 self.addEventListener('install', event => {

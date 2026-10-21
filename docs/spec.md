@@ -15,6 +15,7 @@
 | How much privacy work, and when? | **Keep a place for it; don't build around it yet.** Pages stay on the device, and v1 focuses on never *losing* them | Storage has one hook where end-to-end encryption plugs in later (M4). Until then, effort goes to the journaling itself |
 | Must typed or transcribed text look like my handwriting? | **No.** What matters now is that the words are captured correctly | The stock handwriting fonts stay. Word accuracy is the bar for transcription and dictation |
 | Is there a deadline? | **No.** It's a project I care about | Work is planned as ordered milestones, not dates |
+| What reads the handwriting? | **Claude Opus 5.5, called from the app with my own Anthropic API key** | On-device text recognition is poor at handwriting, and word accuracy is the bar. The key stays on the device. A page is sent only when it's being read. Reading runs at high effort, and the API's refusal fallback is on. Each page costs a few cents, and the app tallies the total |
 
 ## Problem statement
 
@@ -113,23 +114,25 @@ Each requirement is tagged with the milestone that delivers it. **Built** means 
 - [x] Three inks, two nib sizes, an eraser, undo and clear. Ink is stored as vectors
 - [x] After any stylus input, touches from the palm are ignored
 
-**P0-5 · Photo page** · *M1 · Built, except rotate and crop.* Capture or choose a photo of a paper page. It's taped onto a page.
+**P0-5 · Photo page** · *M1–M2 · Built.* Capture or choose a photo of a paper page. It's taped onto a page.
 - [x] The camera opens directly on phones. Choosing an existing image works everywhere
 - [x] The photo is stored on the device at up to 2400 px on its long side, enough to read handwriting later
 - [x] A text field holds what the page says, so search can find it before automatic transcription exists
-- [ ] Rotate and crop (moved to M2, alongside automatic page edges)
+- [x] Rotate a quarter turn, and crop by dragging the corners or the frame (M2)
 
-**P0-6 · Scan your shelf** · *M2.* A continuous capture mode for importing many pages in a row.
-- [ ] I name the notebook (for example "Blue notebook 2023"), then capture page after page without leaving the camera
-- [ ] Each page is dated: from its transcription if a date is found, otherwise from the previous page, otherwise by me
-- [ ] 20 pages can be captured and saved in under 5 minutes on a mid-range phone
-- [ ] Imported pages carry the notebook's name and appear in the book in date order
+**P0-6 · Scan your shelf** · *M2 · Built.* A continuous capture mode for importing many pages in a row.
+- [x] I name the notebook (for example "Blue notebook 2023"), then capture page after page with the live camera, without leaving it. I can also choose photos I've already taken, several at once
+- [x] Before adding, a tray shows every page in order, and each can be rotated or removed
+- [x] Each page is dated: from its own writing if Claude finds a date, otherwise from the page before it, otherwise from the date I gave for the first page, otherwise today
+- [ ] Speed check: 20 pages captured and saved in under 5 minutes on my phone
+- [x] Imported pages carry the notebook's name, shown under the photo, and appear in the book in date order
 
-**P0-7 · Handwriting transcription** · *M2.* Turns photographed handwriting into searchable, editable text. **Word accuracy is the measure of success.** How the result looks doesn't matter.
-- [ ] Runs on one page or a whole import, only when I ask
-- [ ] The text is editable. Pages that fail or score low confidence are marked so I can check them
-- [ ] On the test set, it gets ≥ 90% of words right on neat pages and ≥ 75% on messy ones
-- [ ] The service's API key is entered in the app's settings and kept on the device, never in the code
+**P0-7 · Handwriting transcription** · *M2 · Built.* Turns photographed handwriting into searchable, editable text. **Word accuracy is the measure of success.** How the result looks doesn't matter.
+- [x] Runs on one page (Read the handwriting) or on a whole import, only when I ask. An import is read in the background, one page at a time. The queue survives closing the app and going offline, and it stops with a clear reason if the key is rejected or the account is out of credit
+- [x] The text is editable. Words Claude wasn't sure of are marked [?] or [illegible], and those pages, plus any that failed, are flagged "Check the text" and listed in Settings
+- [x] Accuracy is measured as I go. Ticking "I've checked this text" on a corrected page compares Claude's reading with my correction, and Settings shows the running word accuracy
+- [ ] Accuracy check: ≥ 90% of words right on neat pages and ≥ 75% on messy ones, across 10 checked pages
+- [x] The API key is entered in Settings and kept on the device, never in the code
 
 **P0-8 · Search** · *M1 · Built.* One search box covers titles, typed text and photo text, all on the device.
 - [x] Each result shows the date, the title and a snippet with the match highlighted. Opening a result goes to that page
@@ -148,7 +151,7 @@ Each requirement is tagged with the milestone that delivers it. **Built** means 
 
 ### P1: nice to have
 
-- **Automatic page edges** (M2). Detect the edges of a photographed page, straighten the perspective and flatten curved pages.
+- **Automatic page edges.** Detect the edges of a photographed page, straighten the perspective and flatten curved pages. Manual crop covers the basics for now.
 - **Prompts when stuck.** A "Give me a prompt" button on a blank page, drawing from a starter set and from my own saved prompts.
 - **Volumes.** Imported notebooks become separate books on a shelf, each with its own cover, in addition to appearing in the main book.
 - **On this day.** On opening, show the page from the same date in earlier years, if there is one.
@@ -181,11 +184,12 @@ Measured on the device. Review at 2 weeks, 4 weeks and 8 weeks of daily use.
 
 ## Open questions
 
-1. **Transcription service** (needed for M2): Claude's image reading versus on-device text recognition. Decide on word accuracy against the 10-page test set first, then cost per page. *(Engineering)*
-2. **Sync** (needed for M3): a small hosted database, or a file in my own cloud drive? *(Engineering)*
-3. **Hosting:** where the installable app lives so my phone can reach it. GitHub Pages works for a public repository; a private one needs a paid plan or another host. *(Me)*
-4. Should the page stay fixed at 17 lines, or adapt to the screen? *(Design)*
-5. Should imported notebooks merge into one book, or stay as separate volumes from day one? *(Design)*
+1. **Sync** (needed for M3): a small hosted database, or a file in my own cloud drive? *(Engineering)*
+2. **Reading effort:** is high effort worth its cost, or does medium read just as accurately? Compare once about 10 pages have been checked. *(Me)*
+3. Should the page stay fixed at 17 lines, or adapt to the screen? *(Design)*
+4. Should imported notebooks merge into one book, or stay as separate volumes? Imported pages already carry their notebook's name, so volumes can be added later. *(Design)*
+
+Settled since the first draft: the transcription service (see Decisions), and hosting (GitHub Pages, from `main`).
 
 ## Milestones
 
@@ -193,7 +197,7 @@ No deadline. Each milestone leaves something usable every day.
 
 - **M1, the daily driver** · *built.* Installable app that works offline, on-device storage, the book, quick write, drawing, voice, photo pages with a text field, search, Trash, and backup and restore.
 - **Try it (alongside M1, about 2 weeks).** Journal in M1 daily. Collect 10 real pages, including the field notebook, with their correct text, as the transcription test set.
-- **M2, the shelf.** Scan your shelf, transcription measured on the test set, automatic dating, and automatic page edges, rotate and crop.
+- **M2, the shelf** · *built.* Scan a notebook (live camera or photos), handwriting reading with Claude in the background, automatic dating, marking pages to check, running accuracy, and rotate and crop.
 - **M3, everywhere.** Sync across devices and the readable export.
 - **M4, locked.** End-to-end encryption, using the storage hook that already exists.
 - **Then:** the P1 list, in whatever order daily use suggests. A native app only if the habit holds (G6).

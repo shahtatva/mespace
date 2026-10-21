@@ -8,7 +8,8 @@ export function sortPages(pages) {
 }
 
 export const firstLine = p => String(p.text || p.transcript || '').trim().split('\n')[0].slice(0, 70);
-export const labelOf = p => p.title || firstLine(p) || (p.photo ? 'Paper page' : 'Untitled page');
+export const labelOf = p => p.title || firstLine(p)
+  || (p.photo && p.notebook ? `${p.notebook}, page ${(p.importSeq || 0) + 1}` : p.photo ? 'Paper page' : 'Untitled page');
 
 /**
  * Lays live pages out as a book: index page(s), the guide, every entry in date order,

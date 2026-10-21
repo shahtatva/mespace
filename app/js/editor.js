@@ -1,26 +1,31 @@
 import { LINES } from './book.js';
+import { readPage, READ_ERRORS } from './claude.js';
 import { parseDate, validDate } from './dates.js';
 import { NIBS, PAGE_W, PAGE_H, strokeD, addPoint, eraseAt } from './ink.js';
 import { createDictation, joinText } from './dictation.js';
+import { openCropper, rotateBlob } from './imageedit.js';
 import { blankPage } from './model.js';
 import { preparePhoto, forgetPhoto, hydratePhotos } from './photos.js';
 import { paperHTML, headHTML, photoHTML, strokeHTML } from './render.js';
 import { splitText, contTitle } from './textfit.js';
+import { recordUsage } from './transcriber.js';
+import { applyReading } from './transcription.js';
 import { $, $$, uid, coarsePointer } from './util.js';
 
 /**
  * The full-screen page editor. One page at a time; Write, Draw, Speak and Photo all work on the same page.
  * Saving writes through `store`; the caller re-reads pages afterwards via onSaved / onTrashed.
  */
-export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, onSaved, onTrashed }) {
+export function createEditor({ store, toast, getKey, openSettings, getStyle, setStyle, pageNumberOf, onSaved, onTrashed }) {
   const editor = $('editor'), edPage = $('edPage'), edText = $('edText'), edTitle = $('edTitle'), edInk = $('edInk');
   const edMeasure = $('edMeasure'), edPhoto = $('edPhoto'), edDate = $('edDate'), edTranscript = $('edTranscript');
+  const edChecked = $('edChecked');
 
   const ED = {
     page: null, isNew: true, mode: 'write', undo: [],
     photoBlob: null, photoURL: null, photoSize: null, oldPhoto: null,
     penSeen: false, cur: null, erasing: false, tool: 'pen', ink: 0, nib: 'fine',
-    dirty: false, saving: false, confirmClose: null,
+    dirty: false, saving: false, confirmClose: null, reading: null,
   };
   const hasPhoto = () => !!(ED.photoBlob || ED.page.photo);
 
@@ -30,6 +35,9 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
     const style = getStyle();
     ED.isNew = !page;
     ED.page = page ? structuredClone(page) : blankPage(style);
+    // Today's date on a new page is a default; a date written on a photographed page can replace it.
+    if (!page) ED.page.dateSet = 'guess';
+    ED.reading = null;
     ED.undo = [];
     if (ED.photoURL) URL.revokeObjectURL(ED.photoURL);
     ED.photoBlob = null; ED.photoURL = null; ED.photoSize = null; ED.oldPhoto = null;
@@ -38,16 +46,17 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
     edTitle.value = ED.page.title;
     edText.value = ED.page.text;
     edTranscript.value = ED.page.transcript || '';
+    edChecked.checked = !!ED.page.transcriptChecked;
     edDate.value = ED.page.date;
     $('micLive').textContent = '';
     $('micFallback').hidden = true;
-    $('photoHint').textContent = 'Photograph a page from your paper journal. It gets taped onto this page, so paper and digital entries live in the same notebook.';
+    $('photoHint').textContent = ED.page.photo ? '' : 'Photograph a page from your paper journal. It gets taped onto this page, so paper and digital entries live in the same notebook.';
     $('edDelete').hidden = ED.isNew;
     $('edNum').textContent = page ? pageNumberOf(page.id) : '';
     $('styleBox').open = false;
     resetConfirm();
     editor.hidden = false;
-    applyPaper(); applyHand(); renderHead(); renderInk(); renderPhoto(); syncSegs();
+    applyPaper(); applyHand(); renderHead(); renderInk(); renderPhoto(); syncSegs(); renderReadState();
     setMode(['write', 'draw', 'speak', 'photo'].includes(mode) ? mode : 'write');
     layout();
     if (ED.mode === 'write' && !hasPhoto() && !coarsePointer()) edText.focus({ preventScroll: true });
@@ -55,6 +64,7 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
 
   function close() {
     dictation.cancel();
+    ED.reading = null;
     if (ED.photoURL) URL.revokeObjectURL(ED.photoURL);
     ED.photoURL = null; ED.photoBlob = null;
     editor.hidden = true;
@@ -136,11 +146,12 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
   edDate.addEventListener('change', () => {
     const v = validDate(edDate.value);
     if (!v) { edDate.value = ED.page.date; return; }
-    ED.page.date = v; ED.dirty = true; renderHead();
+    ED.page.date = v; ED.page.dateSet = 'user'; ED.dirty = true; renderHead();
   });
   edTitle.addEventListener('input', () => { ED.dirty = true; });
   edText.addEventListener('input', () => { ED.dirty = true; updateMeter(); });
   edTranscript.addEventListener('input', () => { ED.dirty = true; });
+  edChecked.addEventListener('change', () => { ED.dirty = true; renderReadState(); });
 
   /* ---------- lines and overflow ---------- */
   const lineHeight = () => parseFloat(getComputedStyle(edText).lineHeight) || 20;
@@ -277,6 +288,36 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
     edPhoto.hidden = !hasPhoto();
     edText.hidden = hasPhoto();
   }
+  /** Puts a new or edited image on the page; it is stored when the page is saved. */
+  function setPhoto(blob, w, h) {
+    if (ED.photoURL) URL.revokeObjectURL(ED.photoURL);
+    if (ED.page.photo && !ED.oldPhoto) ED.oldPhoto = ED.page.photo;
+    ED.page.photo = null;
+    ED.photoBlob = blob; ED.photoSize = { w, h }; ED.photoURL = URL.createObjectURL(blob);
+    ED.dirty = true;
+    renderPhoto(); updateHints(); updateMeter(); renderReadState();
+  }
+  async function currentPhotoBlob() {
+    if (ED.photoBlob) return ED.photoBlob;
+    const ph = ED.page.photo && await store.getPhoto(ED.page.photo);
+    if (!ph) throw new Error('missing photo');
+    return new Blob([ph.data], { type: ph.type });
+  }
+  $('btnRotate').addEventListener('click', async () => {
+    try {
+      const { blob, w, h } = await rotateBlob(await currentPhotoBlob(), 1);
+      setPhoto(blob, w, h);
+    } catch {
+      toast('Couldn’t rotate the photo.');
+    }
+  });
+  $('btnCrop').addEventListener('click', async () => {
+    let blob;
+    try { blob = await currentPhotoBlob(); } catch { toast('Couldn’t open the photo.'); return; }
+    const edited = await openCropper(blob);
+    if (edited) setPhoto(edited.blob, edited.w, edited.h);
+  });
+
   async function onPhotoFile(input) {
     const file = input.files && input.files[0];
     input.value = '';
@@ -285,12 +326,7 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
     $('photoHint').textContent = 'Preparing the photo…';
     try {
       const { blob, w, h } = await preparePhoto(file);
-      if (ED.photoURL) URL.revokeObjectURL(ED.photoURL);
-      if (ED.page.photo && !ED.oldPhoto) ED.oldPhoto = ED.page.photo;
-      ED.page.photo = null;
-      ED.photoBlob = blob; ED.photoSize = { w, h }; ED.photoURL = URL.createObjectURL(blob);
-      ED.dirty = true;
-      renderPhoto(); updateHints(); updateMeter();
+      setPhoto(blob, w, h);
       $('photoHint').textContent = 'Taped in. Save the page to keep it.';
     } catch {
       $('photoHint').textContent = 'That image couldn’t be opened. Try a JPEG or PNG.';
@@ -306,6 +342,59 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
     ED.dirty = true;
     renderPhoto(); updateHints(); updateMeter();
     $('photoHint').textContent = 'Photo removed. Save the page to keep this change.';
+  });
+
+  /* ---------- reading the handwriting ---------- */
+  async function renderReadState() {
+    if (editor.hidden || !ED.page) return;
+    const p = ED.page, key = await getKey();
+    const btn = $('btnRead');
+    btn.textContent = !key ? 'Set up handwriting reading' : p.transcriptAI ? 'Read it again' : 'Read the handwriting';
+    btn.disabled = !!ED.reading;
+    if (ED.reading) return;
+    $('readHint').textContent =
+      p.transcriptStatus === 'queued' ? 'Waiting to be read in the background.'
+      : p.transcriptStatus === 'reading' ? 'Being read in the background…'
+      : p.transcriptStatus === 'failed' ? (READ_ERRORS[p.transcriptError] || READ_ERRORS.failed)
+      : edChecked.checked ? 'You’ve checked this text. It counts toward the accuracy measure in Settings.'
+      : p.needsCheck ? 'Some words were hard to read; they’re marked [?]. Fix them against the photo, then tick the box.'
+      : p.transcriptAI ? 'Check the text against the photo and fix any mistakes, then tick the box.'
+      : !key ? 'Add an Anthropic API key in Settings and Claude can read the handwriting, so search finds it.'
+      : 'Claude reads the page so search can find it. Takes up to a minute.';
+  }
+
+  $('btnRead').addEventListener('click', async () => {
+    const key = await getKey();
+    if (!key) { openSettings(); return; }
+    if (ED.reading) return;
+    const ctl = ED.reading = new AbortController();
+    const btn = $('btnRead');
+    btn.disabled = true;
+    $('readHint').textContent = 'Reading the page. This usually takes under a minute…';
+    try {
+      const reading = await readPage(key, await currentPhotoBlob(), { signal: ctl.signal });
+      if (ED.reading !== ctl) return;
+      ED.page.title = edTitle.value.trim();
+      ED.page = applyReading(ED.page, reading);
+      edTitle.value = ED.page.title;
+      edTranscript.value = ED.page.transcript;
+      edDate.value = ED.page.date;
+      edChecked.checked = false;
+      renderHead();
+      ED.dirty = true;
+      recordUsage(store, reading.usage).catch(() => {});
+      ED.reading = null;
+      renderReadState();
+      if (!reading.legible) $('readHint').textContent = 'Claude couldn’t find readable handwriting in this photo.';
+    } catch (e) {
+      if (ED.reading !== ctl) return;
+      ED.reading = null;
+      renderReadState();
+      $('readHint').textContent = READ_ERRORS[e && e.reason] || READ_ERRORS.failed;
+    } finally {
+      if (ED.reading === ctl) ED.reading = null;
+      btn.disabled = false;
+    }
   });
 
   /* ---------- save and delete ---------- */
@@ -325,6 +414,8 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
       page.title = edTitle.value.trim().slice(0, 200);
       page.text = edText.value.replace(/\s+$/, '');
       page.transcript = edTranscript.value.trim();
+      page.transcriptChecked = edChecked.checked && !!page.transcript;
+      if (page.transcriptChecked) page.needsCheck = false;
       const chunks = !hasPhoto() && page.text && !fits(page.text) ? splitText(page.text, fits) : [page.text];
       page.text = chunks[0];
       if (ED.photoBlob) {
@@ -376,5 +467,16 @@ export function createEditor({ store, toast, getStyle, setStyle, pageNumberOf, o
     open,
     isOpen: () => !editor.hidden,
     removeUnusedPhoto,
+    /** Shows a background reading of the open page, unless I've already started changing it. */
+    refreshIfOpen(page) {
+      if (editor.hidden || !ED.page || ED.page.id !== page.id || ED.dirty || ED.reading) return;
+      ED.page = structuredClone(page);
+      edTitle.value = page.title;
+      edTranscript.value = page.transcript || '';
+      edChecked.checked = !!page.transcriptChecked;
+      edDate.value = page.date;
+      renderHead();
+      renderReadState();
+    },
   };
 }
