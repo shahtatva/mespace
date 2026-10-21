@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Paperleaf Journal</title>
+<meta name="description" content="A journal that looks and works like a paper notebook.">
+<meta name="theme-color" content="#D7DCE0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111419" media="(prefers-color-scheme: dark)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Paperleaf">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="fonts/fonts.css">
+<link rel="stylesheet" href="css/paperleaf.css">
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+
+<div class="app">
+  <header class="bar">
+    <div class="brand">
+      <svg width="26" height="30" viewBox="0 0 26 30" aria-hidden="true"><rect x="1" y="1" width="23" height="28" rx="3" fill="var(--cover)"/><rect x="18" y="1" width="2.6" height="28" fill="var(--ribbon)"/><path d="M5 9h9M5 13h9M5 17h6" stroke="var(--paper)" stroke-width="1.4" stroke-linecap="round"/></svg>
+      <span>Paperleaf</span><small>Journal</small>
+    </div>
+    <div class="search" id="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search your pages" autocomplete="off" aria-label="Search your pages" aria-controls="pop">
+      <div class="pop" id="pop" hidden></div>
+    </div>
+    <button class="btn primary" id="btnNew" aria-label="New page">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      <span>New page</span>
+    </button>
+    <div class="menu-wrap">
+      <button class="btn icon-btn" id="menuBtn" aria-label="Menu" aria-haspopup="true" aria-expanded="false" aria-controls="menu">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+      </button>
+      <div class="menu" id="menu" hidden>
+        <button id="mBackup">Back up now</button>
+        <button id="mRestore">Restore from a backup…</button>
+        <button id="mTrash">Trash <span class="menu-count" id="mTrashCount"></span></button>
+        <button id="mInstall" hidden>Install app</button>
+      </div>
+      <input type="file" id="restoreFile" accept="application/json,.json" hidden>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="book" id="book">
+      <div class="cover"></div>
+      <div class="page l" id="pageL"></div>
+      <div class="page r" id="pageR"></div>
+      <nav class="tabs" id="tabs" aria-label="Notebook sections"></nav>
+      <button class="ribbon" id="ribbon" title="Go to your latest page" aria-label="Go to your latest page"></button>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <div class="status" id="status" data-s="loading">
+      <i></i><span id="statusText">Opening your notebook</span>
+      <button class="link-btn" id="statusBackup" hidden>Back up</button>
+    </div>
+    <div class="pager">
+      <button class="btn icon-btn" id="prev" aria-label="Previous pages"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+      <span class="count" id="count" aria-live="polite"></span>
+      <button class="btn icon-btn" id="next" aria-label="Next pages"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+    </div>
+  </footer>
+</div>
+
+<section class="editor" id="editor" hidden aria-label="Page editor">
+  <div class="ed-bar">
+    <button class="btn ghost" id="edClose">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg><span class="btn-label" id="edCloseLabel">Close</span>
+    </button>
+    <label><span class="sr">Date of this page</span><input type="date" id="edDate"></label>
+    <span class="grow"></span>
+    <button class="btn ghost danger" id="edDelete" hidden aria-label="Move to Trash">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg><span class="btn-label">Delete</span>
+    </button>
+    <button class="btn primary" id="edSave">Save page</button>
+  </div>
+  <div class="ed-modes" role="tablist" aria-label="How to fill this page">
+    <button role="tab" data-mode="write" aria-selected="true"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h10"/></svg>Write</button>
+    <button role="tab" data-mode="draw" aria-selected="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21c3-1 5-3 6-5l9-9a2.1 2.1 0 0 0-3-3l-9 9c-2 1-4 3-5 6Z"/></svg>Draw</button>
+    <button role="tab" data-mode="speak" aria-selected="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>Speak</button>
+    <button role="tab" data-mode="photo" aria-selected="false"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>Photo</button>
+  </div>
+  <div class="ed-main">
+    <div class="ed-stage" id="edStage">
+      <div class="page ed-page" id="edPage">
+        <div id="edPaper"></div>
+        <div id="edHead"></div>
+        <input class="pg-title hand-print" id="edTitle" maxlength="200" placeholder="Give this page a title" aria-label="Title">
+        <textarea class="pg-text hand-print" id="edText" placeholder="Start writing…" aria-label="Page text"></textarea>
+        <div class="pg-photo" id="edPhoto" hidden></div>
+        <svg class="pg-ink" id="edInk" viewBox="0 0 1000 1414" preserveAspectRatio="none" aria-label="Drawing layer"></svg>
+        <div class="pg-text hand-print measure" id="edMeasure" aria-hidden="true"></div>
+        <div class="pg-num" id="edNum"></div>
+      </div>
+    </div>
+    <aside class="ed-tools">
+      <div class="panel" data-panel="write">
+        <div class="grp">
+          <h3>Space on this page</h3>
+          <p class="meter" id="meter">0 of 17 lines used</p>
+          <p class="hint" id="writeHint">Type on the page. If you write more than fits, the rest carries over to a new page when you save.</p>
+        </div>
+        <details class="style-box" id="styleBox">
+          <summary>Page style</summary>
+          <div class="grp">
+            <h3>Paper</h3>
+            <div class="seg" id="segPaper"><button data-v="lined">Lined</button><button data-v="dot">Dotted</button><button data-v="plain">Plain</button></div>
+          </div>
+          <div class="grp">
+            <h3>Handwriting</h3>
+            <div class="seg" id="segHand"><button data-v="print"><span class="hand-print">Print</span></button><button data-v="script"><span class="hand-script">Script</span></button></div>
+          </div>
+          <p class="hint">New pages use the style you pick last.</p>
+        </details>
+      </div>
+      <div class="panel" data-panel="draw" hidden>
+        <div class="grp">
+          <h3>Ink</h3>
+          <div class="swatches" id="swInk"><button data-v="0" aria-label="Black ink"><i class="ink0"></i></button><button data-v="1" aria-label="Blue ink"><i class="ink1"></i></button><button data-v="2" aria-label="Red ink"><i class="ink2"></i></button></div>
+        </div>
+        <div class="grp">
+          <h3>Nib</h3>
+          <div class="seg" id="segNib"><button data-v="fine">Fine</button><button data-v="bold">Bold</button></div>
+        </div>
+        <div class="row">
+          <button class="btn" id="btnEraser" aria-pressed="false">Eraser</button>
+          <button class="btn" id="btnUndo">Undo</button>
+          <button class="btn ghost" id="btnClearInk">Clear ink</button>
+        </div>
+        <p class="hint">Draw anywhere on the page, margins included, with a stylus, mouse or finger. Once you use a stylus, touches from your palm are ignored.</p>
+      </div>
+      <div class="panel" data-panel="speak" hidden>
+        <button class="btn primary big" id="btnMic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span id="micLabel">Start dictating</span></button>
+        <p class="live" id="micLive" aria-live="polite"></p>
+        <p class="hint" id="micHint">Speak naturally. Your words are written onto the lines as you talk.</p>
+        <div class="note" id="micFallback" hidden>
+          <p><strong>This browser can't take dictation here.</strong> Use your device's own dictation instead. The cursor is already on the page.</p>
+          <ul>
+            <li>iPhone, iPad or Android: tap the microphone on the keyboard.</li>
+            <li>Mac: press the Globe key (or Fn) twice.</li>
+            <li>Windows: press Windows + H.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="panel" data-panel="photo" hidden>
+        <div class="row">
+          <label class="btn primary file" id="lblCamera">Take a photo<input type="file" accept="image/*" capture="environment" id="inCamera"></label>
+          <label class="btn file" id="lblPick"><span id="pickLabel">Choose an image</span><input type="file" accept="image/*" id="inPick"></label>
+        </div>
+        <p class="hint" id="photoHint">Photograph a page from your paper journal. It gets taped onto this page, so paper and digital entries live in the same notebook.</p>
+        <div class="grp" id="photoTools" hidden>
+          <label class="fld"><span>What the page says (optional; makes it searchable)</span><textarea id="edTranscript" placeholder="Type the words on the page, or the parts you'd want to find later."></textarea></label>
+          <div class="row"><button class="btn ghost danger" id="btnRemovePhoto">Remove photo</button></div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</section>
+
+<section class="sheet" id="trashSheet" hidden aria-labelledby="trashTitle">
+  <div class="sheet-card">
+    <header class="sheet-head"><h2 id="trashTitle">Trash</h2><button class="btn ghost sheet-close">Done</button></header>
+    <ul class="trash-list" id="trashList"></ul>
+  </div>
+</section>
+
+<section class="sheet" id="installSheet" hidden aria-labelledby="installTitle">
+  <div class="sheet-card">
+    <header class="sheet-head"><h2 id="installTitle">Add Paperleaf to your Home Screen</h2><button class="btn ghost sheet-close">Done</button></header>
+    <ol class="steps">
+      <li>Open this page in Safari.</li>
+      <li>Tap the Share button.</li>
+      <li>Choose <strong>Add to Home Screen</strong>, then <strong>Add</strong>.</li>
+    </ol>
+    <p class="hint">Opened from the Home Screen, Paperleaf works offline and its pages aren't cleared by Safari.</p>
+  </div>
+</section>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

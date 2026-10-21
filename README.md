@@ -12,19 +12,53 @@ The goal is to fix those three without losing what makes paper journaling feel p
 
 ## Status
 
-Phase 0: trying the prototype before building v1.
+**Milestone 1 (the daily driver) is built.** It's an installable web app that works offline. Everything is saved on the device:
+
+- the notebook, with page turns, index and month tabs
+- quick writing, which carries over onto a new page when one fills up
+- drawing on any page
+- dictation
+- photos of paper pages
+- search
+- Trash, which keeps deleted pages for 30 days
+- backup and restore through a single file
+
+Next is **M2, the shelf**: importing whole notebooks, plus handwriting transcription measured on word accuracy. See [the spec](docs/spec.md#milestones).
+
+## Run it
+
+The app is plain HTML, CSS and JavaScript. There's no build step and nothing to install.
+
+```sh
+npm start        # serves app/ at http://localhost:5173
+npm test         # unit tests (Node 20 or newer)
+```
+
+Any static file server works in place of `npm start`, for example `python3 -m http.server -d app 5173`. Opening `index.html` directly from disk won't work, because browsers block JavaScript modules on `file://` pages.
+
+**On a phone:** the app needs to be served over HTTPS to install and work offline. Once it's hosted, open it in Safari and choose **Share → Add to Home Screen**, or in Chrome on Android choose **Install app**. On iPhone, open it from the Home Screen; that also stops Safari from clearing its storage.
+
+**Keep backups.** Pages live only on the device until sync arrives in M3. Use **Menu → Back up now** now and then, and keep the file somewhere else, such as iCloud Drive, Google Drive or email. The status line reminds you after 14 days.
 
 ## What's here
 
 | Path | What it is |
 |---|---|
+| [`app/`](app/) | The app. `index.html` is the entry point; `js/` holds the modules; `sw.js` provides offline support |
+| [`tests/`](tests/) | Unit tests for the parts that don't need a browser: dates, the book layout, search, ink, page overflow, backups, and the offline file list |
 | [`docs/brainstorm.md`](docs/brainstorm.md) | Problem framing, directions explored, riskiest assumptions, and what was chosen |
-| [`docs/spec.md`](docs/spec.md) | The v1 spec: decisions, goals, requirements, metrics and milestones |
-| [`prototype/`](prototype/) | The working prototype, a single HTML page. [Try it in Claude](https://claude.ai/artifact/RMCm96Uw4zoxds6959aaDU) |
+| [`docs/spec.md`](docs/spec.md) | The v1 spec: decisions, goals, requirements with build status, metrics and milestones |
+| [`prototype/`](prototype/) | The first single-page prototype, kept for reference. [Try it in Claude](https://claude.ai/artifact/RMCm96Uw4zoxds6959aaDU) |
 
-## Key decisions for v1
+## How the app is put together
 
-- **For one person.** A personal tool, with no accounts for other people and no analytics.
-- **An installable web app** for phone, tablet and desktop.
-- **End-to-end encrypted and local-first.** Pages live on the device, encrypted with a key only the owner holds. Backups are encrypted before they leave the device.
-- **No deadline.** Work goes milestone by milestone, starting with a version usable every day.
+| Module | Job |
+|---|---|
+| `main.js` | Starts the app, and runs the menu, backup and restore, Trash, install and the status line |
+| `notebook.js` | The open book: layout, page turning, tabs, pager and search |
+| `editor.js` | The page editor: write, draw, speak and photo |
+| `render.js` | Builds each page's HTML: paper, header, text, ink and taped-in photo |
+| `store.js` | Saves pages, photos and settings in IndexedDB. Every record passes through one encode/decode step, where encryption plugs in later (M4) |
+| `book.js`, `model.js`, `search.js`, `ink.js`, `textfit.js`, `backup.js`, `dates.js` | Logic that doesn't need a browser, covered by the unit tests |
+
+Fonts (Jost, Kalam and Caveat) are stored in the repo under the SIL Open Font License, so the app works offline. See `app/fonts/OFL.txt`.
