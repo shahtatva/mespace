@@ -36,7 +36,16 @@ npm test         # unit tests (Node 20 or newer)
 
 Any static file server works in place of `npm start`, for example `python3 -m http.server -d app 5173`. Opening `index.html` directly from disk won't work, because browsers block JavaScript modules on `file://` pages.
 
-**On a phone:** the app needs to be served over HTTPS to install and work offline. Once it's hosted, open it in Safari and choose **Share → Add to Home Screen**, or in Chrome on Android choose **Install app**. On iPhone, open it from the Home Screen; that also stops Safari from clearing its storage.
+## Use it on your phone
+
+The app is published with GitHub Pages at **https://shahtatva.github.io/mespace/**. Every push to `main` runs the tests and redeploys it ([workflow](.github/workflows/pages.yml)).
+
+To install it:
+
+- **iPhone or iPad:** open the link in Safari, then choose **Share → Add to Home Screen**. Open it from the Home Screen from then on; that also stops Safari from clearing its storage.
+- **Android:** open the link in Chrome, then choose **Install app**.
+
+The installed app works offline. Updates download in the background and appear the next time you open it.
 
 **Keep backups.** Pages live only on the device until sync arrives in M3. Use **Menu → Back up now** now and then, and keep the file somewhere else, such as iCloud Drive, Google Drive or email. The status line reminds you after 14 days.
 
