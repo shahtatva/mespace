@@ -43,6 +43,7 @@
         <button id="mScan">Scan a notebook…</button>
         <button id="mBackup">Back up now</button>
         <button id="mRestore">Restore from a backup…</button>
+        <button id="mExport">Export…</button>
         <button id="mTrash">Trash <span class="menu-count" id="mTrashCount"></span></button>
         <button id="mInstall" hidden>Install app</button>
         <button id="mSettings">Settings</button>
@@ -215,6 +216,26 @@
 <section class="sheet" id="settingsSheet" hidden aria-labelledby="setTitle">
   <div class="sheet-card">
     <header class="sheet-head"><h2 id="setTitle">Settings</h2><button class="btn ghost sheet-close">Done</button></header>
+    <section class="set-sec" id="syncSec">
+      <h3>Sync between devices</h3>
+      <div class="sync-off" id="syncOff">
+        <p class="hint">Keep this journal the same on your phone and laptop by syncing through a private GitHub repository. Every sync is saved there as a commit, so the repository is also a full history of your pages.</p>
+        <ol class="steps small">
+          <li><a href="https://github.com/new" target="_blank" rel="noopener">Create a private repository</a>, for example <code>paperleaf-data</code>.</li>
+          <li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Create a fine-grained token</a> with access to only that repository and the permission <strong>Contents: Read and write</strong>.</li>
+          <li>Enter both here, then do the same on your other device.</li>
+        </ol>
+        <label class="fld"><span>Repository</span><input id="syncRepo" placeholder="your-name/paperleaf-data" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+        <label class="fld"><span>Token</span><input type="password" id="syncToken" placeholder="github_pat_…" autocomplete="off" spellcheck="false" autocapitalize="off"></label>
+        <div class="row"><button class="btn primary" id="syncConnect">Connect</button></div>
+      </div>
+      <div class="sync-on" id="syncOn" hidden>
+        <p class="set-stat" id="syncInfo"></p>
+        <div class="row"><button class="btn" id="syncNow">Sync now</button><button class="btn ghost danger" id="syncDisconnect">Disconnect</button></div>
+        <p class="hint">The token is stored only on this device. Disconnecting stops syncing and leaves your pages and the repository as they are.</p>
+      </div>
+      <p class="hint" id="syncHint" aria-live="polite"></p>
+    </section>
     <section class="set-sec">
       <h3>Reading handwriting</h3>
       <p class="hint">Paperleaf uses Claude Opus 5.5 to read photographed pages. It needs an Anthropic API key, which you can create at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. The key is stored only on this device, and a photo is sent to Anthropic only when it’s being read.</p>
@@ -260,6 +281,26 @@
   </div>
 </section>
 
+<section class="sheet" id="exportSheet" hidden aria-labelledby="exportTitle">
+  <div class="sheet-card">
+    <header class="sheet-head"><h2 id="exportTitle">Export</h2><button class="btn ghost sheet-close">Done</button></header>
+    <p class="hint">Exports include every page in the book, but not Trash. Leave the dates empty to export everything.</p>
+    <div class="row ex-range">
+      <label class="fld"><span>From</span><input type="date" id="exFrom"></label>
+      <label class="fld"><span>To</span><input type="date" id="exTo"></label>
+    </div>
+    <p class="set-stat" id="exCount"></p>
+    <div class="ex-opt">
+      <div><h3>Printable PDF</h3><p class="hint">Every page as it looks in the book, one per A5 sheet, with the index first. Opens your device’s print dialog: choose “Save as PDF”.</p></div>
+      <button class="btn primary" id="exPdf">Open print view</button>
+    </div>
+    <div class="ex-opt">
+      <div><h3>Text and photos</h3><p class="hint">A .zip with a Markdown file for each page, the original photos, and drawings as SVG. Opens in any notes app or text editor.</p></div>
+      <button class="btn" id="exZip">Download .zip</button>
+    </div>
+  </div>
+</section>
+
 <section class="sheet" id="trashSheet" hidden aria-labelledby="trashTitle">
   <div class="sheet-card">
     <header class="sheet-head"><h2 id="trashTitle">Trash</h2><button class="btn ghost sheet-close">Done</button></header>
@@ -280,5 +321,6 @@
 </section>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="print-book" id="printBook" aria-hidden="true"></div>
 </body>
 </html>

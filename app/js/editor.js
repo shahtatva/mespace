@@ -453,7 +453,8 @@ export function createEditor({ store, toast, getKey, openSettings, getStyle, set
     try {
       const stored = (await store.allPages()).find(p => p.id === ED.page.id);
       if (!stored) { close(); return; }
-      const trashed = { ...stored, deletedAt: Date.now() };
+      const now = Date.now();
+      const trashed = { ...stored, deletedAt: now, updatedAt: now };
       await store.putPage(trashed);
       resetConfirm();
       close();

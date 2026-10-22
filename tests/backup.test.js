@@ -4,7 +4,7 @@ import { makeBackup, parseBackup, mergePages, bytesToBase64, base64ToBytes, back
 
 const page = { id: 'a', date: '2026-10-21', title: 'Hi', text: 'Body', paper: 'lined', hand: 'print', ink: [], photo: 'ph1', photoAspect: 0.75, transcript: '', notebook: '',
   transcriptAI: '', transcriptStatus: '', transcriptError: '', transcriptChecked: false, needsCheck: false,
-  importId: '', importSeq: 0, dateSet: 'user', createdAt: 1, updatedAt: 2, deletedAt: null };
+  importId: '', importSeq: 0, dateSet: 'user', queuedOn: '', createdAt: 1, updatedAt: 2, deletedAt: null };
 
 test('base64 helpers round-trip binary data, including large buffers', () => {
   const bytes = new Uint8Array(100000).map((_, i) => (i * 31) % 256);

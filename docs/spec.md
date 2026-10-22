@@ -15,6 +15,7 @@
 | How much privacy work, and when? | **Keep a place for it; don't build around it yet.** Pages stay on the device, and v1 focuses on never *losing* them | Storage has one hook where end-to-end encryption plugs in later (M4). Until then, effort goes to the journaling itself |
 | Must typed or transcribed text look like my handwriting? | **No.** What matters now is that the words are captured correctly | The stock handwriting fonts stay. Word accuracy is the bar for transcription and dictation |
 | Is there a deadline? | **No.** It's a project I care about | Work is planned as ordered milestones, not dates |
+| Where does sync keep the journal? | **A private GitHub repository I own**, reached straight from the app with a token that can only touch that repository | No new account or server. Every sync is a commit, so the repository is also a full page-by-page history. Public repositories are refused |
 | What reads the handwriting? | **Claude Opus 5.5, called from the app with my own Anthropic API key** | On-device text recognition is poor at handwriting, and word accuracy is the bar. The key stays on the device. A page is sent only when it's being read. Reading runs at high effort, and the API's refusal fallback is on. Each page costs a few cents, and the app tallies the total |
 
 ## Problem statement
@@ -145,9 +146,14 @@ Each requirement is tagged with the milestone that delivers it. **Built** means 
 - [x] "Back up now" saves one file with every page and photo. The status line shows when the last backup was made, and nudges after 14 days
 - [x] "Restore from a backup" adds missing pages, keeps whichever copy of each page is newer, and opens the book to the newest page
 
-**P0-10 · Sync and export** · *M3.*
-- [ ] My journal on a second device, kept in sync automatically
-- [ ] A readable export: a PDF with pages exactly as they look in the book, a Markdown file per page, and the original photos
+**P0-10 · Sync and export** · *M3 · Built.*
+- [x] My journal on a second device, kept in sync automatically: when the app opens, a few seconds after each change, every 5 minutes while it's open, and when the connection returns. Photos and Trash sync too
+- [x] Nothing is lost when both devices change the same page before syncing. The newer version wins, and the other is kept as a "(conflicting copy)" page
+- [x] Deleting a page for good on one device deletes it everywhere
+- [x] A printable export: the index, then every page exactly as it looks in the book, one per A5 sheet, through the device's print dialog ("Save as PDF")
+- [x] A text-and-photos export: a .zip with a Markdown file per page, the original photos, drawings as SVG, and an index
+- [x] Both exports can cover a date range
+- [ ] Real-device check: sync between my phone and laptop through my own repository
 
 ### P1: nice to have
 
@@ -184,12 +190,11 @@ Measured on the device. Review at 2 weeks, 4 weeks and 8 weeks of daily use.
 
 ## Open questions
 
-1. **Sync** (needed for M3): a small hosted database, or a file in my own cloud drive? *(Engineering)*
-2. **Reading effort:** is high effort worth its cost, or does medium read just as accurately? Compare once about 10 pages have been checked. *(Me)*
-3. Should the page stay fixed at 17 lines, or adapt to the screen? *(Design)*
-4. Should imported notebooks merge into one book, or stay as separate volumes? Imported pages already carry their notebook's name, so volumes can be added later. *(Design)*
+1. **Reading effort:** is high effort worth its cost, or does medium read just as accurately? Compare once about 10 pages have been checked. *(Me)*
+2. Should the page stay fixed at 17 lines, or adapt to the screen? *(Design)*
+3. Should imported notebooks merge into one book, or stay as separate volumes? Imported pages already carry their notebook's name, so volumes can be added later. *(Design)*
 
-Settled since the first draft: the transcription service (see Decisions), and hosting (GitHub Pages, from `main`).
+Settled since the first draft: the transcription service and sync (see Decisions), and hosting (GitHub Pages, from `main`).
 
 ## Milestones
 
@@ -198,6 +203,6 @@ No deadline. Each milestone leaves something usable every day.
 - **M1, the daily driver** · *built.* Installable app that works offline, on-device storage, the book, quick write, drawing, voice, photo pages with a text field, search, Trash, and backup and restore.
 - **Try it (alongside M1, about 2 weeks).** Journal in M1 daily. Collect 10 real pages, including the field notebook, with their correct text, as the transcription test set.
 - **M2, the shelf** · *built.* Scan a notebook (live camera or photos), handwriting reading with Claude in the background, automatic dating, marking pages to check, running accuracy, and rotate and crop.
-- **M3, everywhere.** Sync across devices and the readable export.
+- **M3, everywhere** · *built.* Sync between devices through a private GitHub repository, and the printable and text-and-photos exports.
 - **M4, locked.** End-to-end encryption, using the storage hook that already exists.
 - **Then:** the P1 list, in whatever order daily use suggests. A native app only if the habit holds (G6).

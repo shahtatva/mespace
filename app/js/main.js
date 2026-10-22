@@ -1,16 +1,18 @@
 import { makeBackup, parseBackup, mergePages, backupFilename } from './backup.js';
-import { shortDate, daysAgo } from './dates.js';
+import { shortDate, daysAgo, timeAgo } from './dates.js';
 import { labelOf, sortPages } from './book.js';
 import { READ_ERRORS } from './claude.js';
 import { createEditor } from './editor.js';
+import { pagesForExport, exportZip, preparePrintView } from './export.js';
 import { normalizePage, expiredTrash, daysLeftInTrash, PAPERS, HANDS } from './model.js';
 import { createNotebook } from './notebook.js';
-import { forgetPhoto } from './photos.js';
+import { forgetPhoto, photoURL } from './photos.js';
 import { createScanner } from './scanner.js';
 import { createSettings } from './settings.js';
 import { openStore, requestPersistence } from './store.js';
+import { createSync, SYNC_ERRORS } from './sync.js';
 import { createTranscriber } from './transcriber.js';
-import { $, esc, coarsePointer } from './util.js';
+import { $, esc, coarsePointer, uid } from './util.js';
 
 const BACKUP_DUE_DAYS = 14;
 
@@ -18,6 +20,8 @@ const store = await openStore();
 let pages = [];
 let style = { paper: 'lined', hand: 'print' };
 const getKey = () => store.getMeta('claudeKey').catch(() => null);
+let deviceId = await store.getMeta('deviceId').catch(() => null);
+if (!deviceId) { deviceId = uid(); await store.setMeta('deviceId', deviceId).catch(() => {}); }
 
 /* ---------- toast ---------- */
 let toastTimer;
@@ -35,7 +39,7 @@ function toast(message, action) {
 }
 
 /* ---------- sheets (Trash, Settings, install help) ---------- */
-const SHEETS = ['trashSheet', 'settingsSheet', 'installSheet'];
+const SHEETS = ['trashSheet', 'settingsSheet', 'installSheet', 'exportSheet'];
 const openSheet = id => { $(id).hidden = false; $(id).querySelector('.sheet-close')?.focus(); };
 const closeSheet = id => { $(id).hidden = true; };
 const anySheetOpen = () => SHEETS.some(id => !$(id).hidden) || !$('cropSheet').hidden;
@@ -65,11 +69,11 @@ const editor = createEditor({
   onSaved: async id => {
     await reload(id);
     if (pages.length) requestPersistence();
+    sync.request();
   },
   onTrashed: async page => {
     await reload();
-// Carry on reading any pages left waiting last time.
-transcriber.run();
+    sync.request();
     toast('Moved to Trash', { label: 'Undo', run: () => restorePage(page.id) });
   },
 });
@@ -82,12 +86,21 @@ async function reload(focusId = null) {
   settings.refresh();
 }
 
+/* ---------- sync between devices ---------- */
+let syncState = { status: 'off' };
+const sync = createSync({
+  store,
+  onState: st => { syncState = st; updateStatus(); settings.refreshSync(); },
+  onChange: () => reload(),
+});
+
 /* ---------- reading handwriting in the background ---------- */
 let readState = null;
 let reloadTimer;
 const transcriber = createTranscriber({
   store,
   getKey,
+  deviceId,
   onProgress: state => {
     if (state && state.state === 'done' && state.done) toast(`Finished reading ${state.done} page${state.done === 1 ? '' : 's'}`);
     readState = state && state.state !== 'done' && !(state.state === 'stopped' && !state.left) ? state : null;
@@ -97,6 +110,7 @@ const transcriber = createTranscriber({
     editor.refreshIfOpen(page);
     clearTimeout(reloadTimer);
     reloadTimer = setTimeout(() => reload(), 250);
+    sync.request(5000);
   },
 });
 
@@ -104,12 +118,14 @@ const settings = createSettings({
   store,
   getPages: () => pages,
   transcriber,
+  sync,
   onOpenPage: page => editor.open(page, 'photo'),
 });
 
 const scanner = createScanner({
   store,
   getKey,
+  deviceId,
   toast,
   openSettings: () => settings.open(),
   onAdded: async (ids, { name, read }) => {
@@ -117,6 +133,7 @@ const scanner = createScanner({
     requestPersistence();
     toast(`Added ${ids.length} page${ids.length === 1 ? '' : 's'}${name ? ` from ${name}` : ''}.${read ? ' Claude is reading them now.' : ''}`);
     if (read) transcriber.run();
+    sync.request();
   },
 });
 
@@ -149,12 +166,26 @@ function readingStatus() {
   }
 }
 
+// Problems only I can fix point to Settings; the rest sync retries by itself.
+const SYNC_NEEDS_ME = new Set(['bad-token', 'no-repo', 'public-repo', 'no-write']);
+function syncStatus() {
+  const s = syncState;
+  if (s.status === 'syncing') return setStatus('busy', 'Syncing…');
+  if (s.status === 'error') {
+    return setStatus('warn', SYNC_ERRORS[s.error] || SYNC_ERRORS.failed,
+      SYNC_NEEDS_ME.has(s.error) ? { label: 'Settings', run: () => settings.open() } : null);
+  }
+  setStatus('ok', s.lastSyncAt ? `Synced ${timeAgo(s.lastSyncAt)}` : 'Sync is on', { label: 'Sync now', run: () => sync.run() });
+}
+
 async function updateStatus() {
   if (store.kind === 'memory') {
     setStatus('warn', 'This browser isn’t letting the app save. Pages last until you close it.');
     return;
   }
   if (readState) { readingStatus(); return; }
+  // With sync on, the repository is the backup, so the backup reminder steps aside.
+  if (syncState.status !== 'off') { syncStatus(); return; }
   const last = await store.getMeta('lastBackupAt').catch(() => null);
   if (readState) { readingStatus(); return; }
   const live = pages.filter(p => !p.deletedAt).length;
@@ -167,6 +198,7 @@ async function updateStatus() {
       : `Saved on this device · ${detail}`,
     due ? { label: 'Back up', run: backupNow } : null);
 }
+setInterval(updateStatus, 60000);
 let statusTimer;
 addEventListener('resize', () => { clearTimeout(statusTimer); statusTimer = setTimeout(updateStatus, 150); });
 
@@ -188,7 +220,7 @@ menu.addEventListener('click', ev => { if (ev.target.closest('button')) closeMen
 
 /* ---------- backup ---------- */
 async function saveFile(blob, name) {
-  const file = new File([blob], name, { type: 'application/json' });
+  const file = new File([blob], name, { type: blob.type || 'application/octet-stream' });
   if (coarsePointer() && navigator.canShare && navigator.canShare({ files: [file] })) {
     try {
       await navigator.share({ files: [file], title: 'Paperleaf backup' });
@@ -243,6 +275,7 @@ $('restoreFile').addEventListener('change', async ev => {
     const needed = new Set(write.map(p => p.photo).filter(Boolean));
     for (const ph of data.photos) if (needed.has(ph.id) && !have.has(ph.id)) await store.putPhoto(ph);
     for (const p of write) await store.putPage(p);
+    sync.request();
     const newest = sortPages(write.filter(p => !p.deletedAt)).at(-1);
     await reload(newest ? newest.id : null);
     toast(write.length
@@ -257,8 +290,9 @@ $('restoreFile').addEventListener('change', async ev => {
 async function restorePage(id) {
   const p = pages.find(x => x.id === id);
   if (!p) return;
-  await store.putPage({ ...p, deletedAt: null });
+  await store.putPage({ ...p, deletedAt: null, updatedAt: Date.now() });
   await reload(id);
+  sync.request();
   toast('Page restored');
 }
 
@@ -267,9 +301,8 @@ async function deleteForever(id) {
   if (!p) return;
   await store.removePage(id);
   if (p.photo) await editor.removeUnusedPhoto(p.photo);
+  await sync.forget(id);
   await reload();
-// Carry on reading any pages left waiting last time.
-transcriber.run();
 }
 
 function renderTrash() {
@@ -291,6 +324,58 @@ $('trashList').addEventListener('click', ev => {
   d.dataset.confirm = '1';
   d.textContent = 'Delete for good?';
   setTimeout(() => { if (d.isConnected) { delete d.dataset.confirm; d.textContent = 'Delete now'; } }, 4000);
+});
+
+/* ---------- export ---------- */
+const exportEntries = () => pagesForExport(pages, $('exFrom').value, $('exTo').value);
+function renderExportCount() {
+  const n = exportEntries().length;
+  $('exCount').textContent = n ? `${n} page${n === 1 ? '' : 's'} to export` : 'No pages in that range.';
+  $('exPdf').disabled = $('exZip').disabled = !n;
+}
+$('mExport').addEventListener('click', () => { renderExportCount(); openSheet('exportSheet'); });
+$('exFrom').addEventListener('change', renderExportCount);
+$('exTo').addEventListener('change', renderExportCount);
+
+$('exPdf').addEventListener('click', async () => {
+  const btn = $('exPdf');
+  btn.disabled = true;
+  btn.textContent = 'Preparing…';
+  try {
+    await preparePrintView($('printBook'), exportEntries(), id => photoURL(store, id));
+    closeSheet('exportSheet');
+    window.print();
+  } catch {
+    toast('Couldn’t prepare the print view. Try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Open print view';
+  }
+});
+addEventListener('afterprint', () => { $('printBook').innerHTML = ''; });
+
+$('exZip').addEventListener('click', async () => {
+  const btn = $('exZip');
+  btn.disabled = true;
+  btn.textContent = 'Preparing…';
+  try {
+    const entries = exportEntries();
+    const photos = new Map();
+    for (const { page } of entries) {
+      if (page.photo && !photos.has(page.photo)) {
+        const ph = await store.getPhoto(page.photo);
+        if (ph) photos.set(page.photo, ph);
+      }
+    }
+    const folder = `paperleaf-export-${new Date().toISOString().slice(0, 10)}`;
+    const blob = new Blob([exportZip(entries, photos, folder)], { type: 'application/zip' });
+    if (await saveFile(blob, `${folder}.zip`)) toast(`Exported ${entries.length} page${entries.length === 1 ? '' : 's'} as ${folder}.zip`);
+  } catch {
+    toast('Couldn’t make the export. Try again.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Download .zip';
+  }
 });
 
 /* ---------- install ---------- */
@@ -320,17 +405,20 @@ if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
 }
 
 /* ---------- start ---------- */
+await sync.init().catch(() => {});
 try {
   const saved = await store.getMeta('style');
   if (saved && PAPERS.includes(saved.paper) && HANDS.includes(saved.hand)) style = saved;
   const all = (await store.allPages()).map(normalizePage).filter(Boolean);
   for (const p of expiredTrash(all)) {
     await store.removePage(p.id);
+    await sync.forget(p.id);
     if (p.photo && !all.some(o => o.id !== p.id && o.photo === p.photo)) { await store.removePhoto(p.photo); forgetPhoto(p.photo); }
   }
 } catch {
   /* start with whatever loads below */
 }
 await reload();
-// Carry on reading any pages left waiting last time.
+// Carry on reading any pages left waiting last time, and catch up with other devices.
 transcriber.run();
+sync.run();

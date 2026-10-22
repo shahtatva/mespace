@@ -21,12 +21,14 @@ const STOPS_QUEUE = new Set(['bad-key', 'no-permission', 'billing', 'offline', '
  * onProgress(state): { state: 'reading', done, total } | { state: 'stopped', reason, left } | { state: 'done', done } | null
  * onPageChanged(page): a page's text, date or reading status changed.
  */
-export function createTranscriber({ store, getKey, onProgress, onPageChanged }) {
+export function createTranscriber({ store, getKey, deviceId, onProgress, onPageChanged }) {
   let running = false, controller = null, retryTimer = null;
 
   const all = async () => (await store.allPages()).map(normalizePage).filter(Boolean);
+  const queued = p => !p.deletedAt && p.photo && (p.transcriptStatus === 'queued' || p.transcriptStatus === 'reading');
+  // Only pages queued on this device; another synced device reads its own.
   const waiting = pages => pages
-    .filter(p => !p.deletedAt && p.photo && (p.transcriptStatus === 'queued' || p.transcriptStatus === 'reading'))
+    .filter(p => queued(p) && (!p.queuedOn || p.queuedOn === deviceId))
     .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
 
   async function run() {
@@ -99,13 +101,21 @@ export function createTranscriber({ store, getKey, onProgress, onPageChanged }) 
     async enqueue(ids) {
       const wanted = new Set(ids);
       for (const p of await all()) {
-        if (wanted.has(p.id) && p.photo) await store.putPage({ ...p, transcriptStatus: 'queued', transcriptError: '' });
+        if (wanted.has(p.id) && p.photo) await store.putPage({ ...p, transcriptStatus: 'queued', transcriptError: '', queuedOn: deviceId, updatedAt: Date.now() });
       }
       run();
     },
     run,
     /** Stops after cancelling the page being read; the rest stay queued. */
     stop() { clearTimeout(retryTimer); if (controller) controller.abort(); },
-    async waitingCount() { return waiting(await all()).length; },
+    /** Pages waiting to be read on any device. */
+    async waitingCount() { return (await all()).filter(queued).length; },
+    /** Reads, on this device, pages another device queued but hasn't read. */
+    async takeOver() {
+      for (const p of await all()) {
+        if (queued(p) && p.queuedOn !== deviceId) await store.putPage({ ...p, transcriptStatus: 'queued', queuedOn: deviceId, updatedAt: Date.now() });
+      }
+      run();
+    },
   };
 }

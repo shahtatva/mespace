@@ -12,7 +12,7 @@ export function blankPage({ date, paper = 'lined', hand = 'print' } = {}) {
     id: null, date: validDate(date) || todayISO(), title: '', text: '', paper, hand,
     ink: [], photo: null, photoAspect: null, transcript: '', notebook: '',
     transcriptAI: '', transcriptStatus: '', transcriptError: '', transcriptChecked: false, needsCheck: false,
-    importId: '', importSeq: 0, dateSet: 'user',
+    importId: '', importSeq: 0, dateSet: 'user', queuedOn: '',
     createdAt: 0, updatedAt: 0, deletedAt: null,
   };
 }
@@ -52,6 +52,8 @@ export function normalizePage(raw) {
     importId: str(raw.importId, 80),
     importSeq: num(raw.importSeq),
     dateSet: DATE_SOURCES.includes(raw.dateSet) ? raw.dateSet : 'user',
+    // The device that queued the page for reading, so two synced devices don't both read (and pay for) it.
+    queuedOn: str(raw.queuedOn, 80),
     createdAt: num(raw.createdAt),
     updatedAt: num(raw.updatedAt),
     deletedAt: num(raw.deletedAt) || null,

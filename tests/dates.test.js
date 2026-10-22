@@ -28,3 +28,12 @@ test('shortDate and daysAgo read naturally', () => {
   assert.equal(daysAgo(now - 864e5, now), 'yesterday');
   assert.equal(daysAgo(now - 5 * 864e5, now), '5 days ago');
 });
+
+test('timeAgo reads naturally for recent syncs', async () => {
+  const { timeAgo } = await import('../app/js/dates.js');
+  const now = Date.UTC(2026, 9, 22, 12);
+  assert.equal(timeAgo(now - 20e3, now), 'just now');
+  assert.equal(timeAgo(now - 5 * 60e3, now), '5 min ago');
+  assert.equal(timeAgo(now - 3 * 3600e3, now), '3 h ago');
+  assert.equal(timeAgo(now - 2 * 864e5, now), '2 days ago');
+});

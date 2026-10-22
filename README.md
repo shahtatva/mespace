@@ -30,7 +30,12 @@ The goal is to fix those three without losing what makes paper journaling feel p
 - **Checking:** words Claude wasn't sure of are marked for checking. Ticking "I've checked this text" on a corrected page feeds a running word-accuracy figure in Settings.
 - **Rotate and crop** for any photo page.
 
-Next is **M3, everywhere**: sync between devices and a readable export. See [the spec](docs/spec.md#milestones).
+**Milestone 3 (everywhere) is built as well:**
+
+- **Sync** between your phone and laptop through a private GitHub repository you own. Every sync is a commit, so the repository is a full history of your journal.
+- **Export** as a printable PDF, where every page looks as it does in the book, or as a .zip of Markdown pages, photos and drawings.
+
+Next on the list is **M4**: end-to-end encryption, so the repository holds only scrambled data. See [the spec](docs/spec.md#milestones).
 
 ## Run it
 
@@ -63,14 +68,24 @@ Reading uses Claude Opus 5.5 through Anthropic's API, with your own API key:
 
 The key is stored only on that device. A photo leaves the device only while it's being read, and each page costs a few cents. Settings shows the running total.
 
-**Keep backups.** Pages live only on the device until sync arrives in M3. Use **Menu → Back up now** now and then, and keep the file somewhere else, such as iCloud Drive, Google Drive or email. The status line reminds you after 14 days.
+## Syncing between devices
+
+1. [Create a private repository](https://github.com/new) on GitHub, for example `paperleaf-data`. It must be private; the app refuses public ones.
+2. [Create a fine-grained token](https://github.com/settings/personal-access-tokens/new) with access to **only that repository** and the permission **Contents: Read and write**.
+3. In the app, open **Menu → Settings → Sync between devices**, and enter the repository (`your-name/paperleaf-data`) and the token. Do the same on your other device.
+
+The token is stored only on the device it was entered on. When it expires, the status line says so; create a new one and enter it the same way.
+
+The repository holds one file per page (`pages/`) and the photos (`photos/`). It's private but not encrypted, so anyone with access to your GitHub account can read it. End-to-end encryption is planned for M4.
+
+**Without sync, keep backups.** Use **Menu → Back up now** now and then, and keep the file somewhere else, such as iCloud Drive, Google Drive or email. The status line reminds you after 14 days. With sync on, the repository is your backup.
 
 ## What's here
 
 | Path | What it is |
 |---|---|
 | [`app/`](app/) | The app. `index.html` is the entry point; `js/` holds the modules; `sw.js` provides offline support |
-| [`tests/`](tests/) | Unit tests for the parts that don’t need a browser: dates, the book layout, search, ink, page overflow, dictation, backups, reading and accuracy, and the offline file list |
+| [`tests/`](tests/) | Unit tests for the parts that don’t need a browser: dates, the book layout, search, ink, page overflow, dictation, backups, reading and accuracy, sync decisions, the zip writer and exports, and the offline file list |
 | [`docs/brainstorm.md`](docs/brainstorm.md) | Problem framing, directions explored, riskiest assumptions, and what was chosen |
 | [`docs/spec.md`](docs/spec.md) | The v1 spec: decisions, goals, requirements with build status, metrics and milestones |
 | [`prototype/`](prototype/) | The first single-page prototype, kept for reference. [Try it in Claude](https://claude.ai/artifact/RMCm96Uw4zoxds6959aaDU) |
@@ -87,7 +102,9 @@ The key is stored only on that device. A photo leaves the device only while it's
 | `scanner.js` | Scan a notebook: live camera or chosen photos, a tray to rotate or remove pages, then adds them to the book |
 | `claude.js` | Calls Claude to read a photographed page, through the official Anthropic SDK bundled in `vendor/` (`npm run vendor` rebuilds it) |
 | `transcriber.js` | The background reading queue, which survives closing the app and going offline |
-| `settings.js`, `imageedit.js` | The Settings sheet (API key, cost, accuracy, pages to check), and rotate and crop |
-| `book.js`, `model.js`, `search.js`, `ink.js`, `textfit.js`, `backup.js`, `dates.js`, `dictation.js`, `transcription.js`, `accuracy.js` | Logic that doesn't need a browser, covered by the unit tests |
+| `settings.js`, `imageedit.js` | The Settings sheet (sync, API key, cost, accuracy, pages to check), and rotate and crop |
+| `sync.js`, `github.js` | Sync: one pass downloads what changed elsewhere, settles conflicts, and uploads this device's changes as one commit |
+| `export.js`, `zip.js` | The print view for PDFs, and the .zip of Markdown pages, photos and drawings |
+| `book.js`, `model.js`, `search.js`, `ink.js`, `textfit.js`, `backup.js`, `dates.js`, `dictation.js`, `transcription.js`, `accuracy.js`, `gitsync.js` | Logic that doesn't need a browser, covered by the unit tests |
 
 Fonts (Jost, Kalam and Caveat) are stored in the repo under the SIL Open Font License, so the app works offline. See `app/fonts/OFL.txt`.

@@ -8,7 +8,7 @@ import { $, uid } from './util.js';
  * "Scan a notebook": photograph many paper pages in one sitting, from the live camera or from photos already
  * taken, then add them all to the book as photo pages carrying the notebook's name, in capture order.
  */
-export function createScanner({ store, getKey, toast, openSettings, onAdded }) {
+export function createScanner({ store, getKey, deviceId, toast, openSettings, onAdded }) {
   const sheet = $('scanner'), video = $('scVideo');
   let shots = [];
   let stream = null, saving = false, confirmClose = null;
@@ -162,6 +162,7 @@ export function createScanner({ store, getKey, toast, openSettings, onAdded }) {
           // A date I typed for the first page is mine; every other date is a guess until the page's own writing says otherwise.
           dateSet: entered && i === 0 ? 'user' : 'guess',
           transcriptStatus: read ? 'queued' : '',
+          queuedOn: read ? deviceId : '',
           createdAt: now + i, updatedAt: now,
         };
         await store.putPage(page);

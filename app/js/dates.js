@@ -41,3 +41,12 @@ export function daysAgo(ms, now = Date.now()) {
   if (days === 1) return 'yesterday';
   return `${days} days ago`;
 }
+
+/** "just now", "5 min ago", "3 h ago", then days, for a past timestamp. */
+export function timeAgo(ms, now = Date.now()) {
+  const min = Math.floor((now - ms) / 60000);
+  if (min < 1) return 'just now';
+  if (min < 60) return `${min} min ago`;
+  if (min < 24 * 60) return `${Math.floor(min / 60)} h ago`;
+  return daysAgo(ms, now);
+}
